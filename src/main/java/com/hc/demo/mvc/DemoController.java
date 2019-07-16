@@ -12,7 +12,7 @@ import java.io.IOException;
 
 @MyController
 @MyRequestMapping("/demo")
-public class DemoAction {
+public class DemoController {
 
     @MyAutowired
     private DemoService demoService;

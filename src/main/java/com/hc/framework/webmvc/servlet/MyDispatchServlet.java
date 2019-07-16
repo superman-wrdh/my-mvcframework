@@ -15,9 +15,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
-import java.util.logging.Handler;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Date;
 
 public class MyDispatchServlet extends HttpServlet {
 
@@ -29,21 +29,27 @@ public class MyDispatchServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        this.doPost(req, resp);
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         //6,等待请求
         try {
-            doDispatch(req, resp);
+            doDispatch(req, resp, "GET");
         } catch (Exception e) {
             resp.getWriter().write("500 server error");
             e.printStackTrace();
         }
     }
 
-    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        //6,等待请求
+        try {
+            doDispatch(req, resp, "POST");
+        } catch (Exception e) {
+            resp.getWriter().write("500 server error");
+            e.printStackTrace();
+        }
+    }
+
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp, String methodType) throws Exception {
 
         try {
             Handle handle = getHandle(req);
@@ -56,22 +62,34 @@ public class MyDispatchServlet extends HttpServlet {
             Object[] paramValues = new Object[parameterTypes.length];
             Map<String, String[]> params = req.getParameterMap();
 
-            //TODO
             for (Map.Entry<String, String[]> param : params.entrySet()) {
-                Arrays.toString(param.getValue()).replaceAll("\\[|\\]", "").replaceAll("", "");
-
+                String value = Arrays.toString(param.getValue()).replaceAll("\\[|\\]", "").replaceAll(",\\s", ",");
+                if (!handle.paramIndexMapping.containsKey(param.getKey())) {
+                    continue;
+                }
+                Integer index = handle.paramIndexMapping.get(param.getKey());
+                paramValues[index] = convert(parameterTypes[index], value);
             }
 
             Integer reqIndex = handle.paramIndexMapping.get(HttpServletRequest.class.getName());
-            paramValues[reqIndex] = resp;
+            paramValues[reqIndex] = req;
             Integer respIndex = handle.paramIndexMapping.get(HttpServletResponse.class.getName());
-            paramValues[reqIndex] = resp;
+            paramValues[respIndex] = resp;
             handle.method.invoke(handle.controller, paramValues);
+            //[16/Jul/2019 12:54:04] "POST /api/v1/user/login/ HTTP/1.1" 200 67
+            System.out.println("[" + new Date() + "] " + methodType + " " + handle.pattern);
 
         } catch (Exception e) {
             throw e;
         }
 
+    }
+
+    private Object convert(Class<?> type, String value) {
+        if (Integer.class == type) {
+            return Integer.valueOf(value);
+        }
+        return value;
     }
 
     @Override
@@ -122,7 +140,6 @@ public class MyDispatchServlet extends HttpServlet {
                 handMapping.add(new Handle(pattern, entry.getValue(), method));
 
                 //handMapping.put(methodUrl, method);
-
                 System.out.println("mapping:" + regex + "," + method);
             }
 
@@ -276,22 +293,32 @@ public class MyDispatchServlet extends HttpServlet {
     }
 
     private Handle getHandle(HttpServletRequest req) throws Exception {
-        if (handMapping.isEmpty()) return null;
+        //循环handlerMapping
+        if (handMapping.isEmpty()) {
+            return null;
+        }
+
+        //
         String url = req.getRequestURI();
         String contextPath = req.getContextPath();
         url = url.replace(contextPath, "").replaceAll("/+", "/");
-        for (Handle handle : handMapping) {
+
+
+        for (Handle handler : handMapping) {
             try {
-                Matcher matcher = handle.pattern.matcher(url);
+                Matcher matcher = handler.pattern.matcher(url);
+
                 if (!matcher.matches()) {
                     continue;
                 }
-                return handle;
+
+                return handler;
             } catch (Exception e) {
                 throw e;
             }
 
         }
+
         return null;
     }
 
